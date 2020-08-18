@@ -1,0 +1,409 @@
+---
+title: "ExcercisesSTA380"
+author: "Zachary Hall"
+date: "8/17/2020"
+output:
+  md_document:
+    variant: markdown_github
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+defaultW <- getOption("warn") 
+
+options(warn = -1) 
+```
+
+#Problem 1
+```{r 1, message=FALSE}
+library(RCurl)
+x <- getURL('https://raw.githubusercontent.com/jgscott/STA380/master/data/greenbuildings.csv')
+y <- read.csv(text = x)
+```
+
+```{r 2}
+library(devtools)
+```
+
+
+```{r 3, message=FALSE}
+plot(y$Rent,y$green_rating)
+median(y$Rent)
+```
+
+```{r 4, message=FALSE}
+library(dplyr)
+greendata <- as.data.frame(y)
+glimpse(greendata)
+variables <- greendata %>% select(2:23)
+```
+
+```{r 5, message=FALSE}
+GGally::ggcorr(variables, hjust = .9,size=2,label=TRUE, label_size = 1.5)
+```
++As we can see in the correlation matrix, Rent and green rating have close to no correlation, however things like the local market;s average rent, cost of electricity, heating/cooling days, the class of the building, size, location and the leasing rate tend to affect rent costs much more. Number of stories, age, renovations, and net utilities also affect rent more than green rating.
+```{r 7, message=FALSE}
+fit <- lm(Rent ~ green_rating, data=variables)
+summary(fit)
+```
++This shows that the relationship between green rating and rent is statistically significant (p<0.05). Running a multilinear regression to see how coefficients change to find confounding variables.
+```{r 6, message=FALSE}
+multivar_reg <- t(cov(variables$Rent, variables) %*% solve(cov(variables)))
+model2 <- lm(Rent ~ size + renovated + leasing_rate+ empl_gr+ stories+ age+ class_a+ class_b+ green_rating+ net + amenities + cd_total_07 + hd_total07+ total_dd_07+ Precipitation+ Gas_Costs+ Electricity_Costs+ cluster_rent, data=variables)
+summary(model2)
+```
++When all other variables are taken into account, not only are confounding variables found (10% change in the green rating coefficient), but also the p-value shows that green rating does not have a statistically significant correlation with rent (p>0.05). This shows that the employee that simply used excel assumed a correlation without taking in the affect that all of the other variables would have on rent.
++The best way to adjust for confounding variables would be to either select more random locations or to only do an analysis on the specific area in which we are looking to rent a green office.
+
+
+#Problem 2
+```{r 10, message=FALSE}
+library(tidyverse)
+library(knitr)
+
+a <- getURL('https://raw.githubusercontent.com/jgscott/STA380/master/data/ABIA.csv')
+b <- read.csv(text = a)
+summary(b)
+
+```
+
+```{r 11, message=FALSE}
+ggplot(data = b, aes(DayofMonth, WeatherDelay)) +
+  geom_line(color = "lightblue", size = 1) +
+  geom_point(color = "navyblue") + 
+  labs(title = "Dates of the year 2008 vs. Weather Delays",
+       y = "Minutes of weather Delay", x = "Day of the week in month") + 
+  facet_wrap(~ Month) 
+```
++As we can see in the plot, we can predict days of worse weather which cause delays, like in the winter months there are probably more delays from cities coming from the north. Mixed in are days that could be violent thunderstroms throughout the year in Austin or other cities.
+```{r 12, message=FALSE}
+ggplot(b, aes(ActualElapsedTime, ArrDelay)) +
+  geom_point(aes(color = UniqueCarrier)) +
+  geom_smooth(se = FALSE) +
+  labs(title = "Actual Elapsed Time vs. Arrival Delay")
+```
++This shows us that if a flight is 250 minutes or less, it is on average going to arrive on time. As the elapsed time increases after 250, the arrival delay does as well which makes sense as planes may have to take alternate routes in inclement weather which would take more time. This chart also shows us that OH flights tend to be the most common to spend a long time in the air coinciding with a delay.
+
+#Problem 3
+```{r 13, message=FALSE}
+library(mosaic)
+library(quantmod)
+library(foreach)
+
+# Import a few stocks
+mystocks = c("USO", "GLD", "BND","HYG","XOP","XLE","VNQ","SHY","AOR","AOM","AOA","AOK","SWAN")
+getSymbols(mystocks)
+```
+
+```{r 14, message=FALSE}
+USOa = adjustOHLC(USO)
+GLDa = adjustOHLC(GLD)
+BNDa = adjustOHLC(BND)
+HYGa = adjustOHLC(HYG)
+XOPa = adjustOHLC(XOP)
+XLEa = adjustOHLC(XLE)
+VNQa = adjustOHLC(VNQ)
+SHYa = adjustOHLC(SHY)
+AORa = adjustOHLC(AOR)
+AOMa = adjustOHLC(AOM)
+AOAa = adjustOHLC(AOA)
+AOKa = adjustOHLC(AOK)
+SWANa = adjustOHLC(SWAN)
+
+```
+
+```{r 15, message=FALSE}
+plot(ClCl(USOa))
+plot(ClCl(AOMa))
+
+```
+
+```{r 16, message=FALSE}
+oil_returns = cbind(ClCl(USOa),ClCl(XOPa),ClCl(XLEa))
+oil_returns = as.matrix(na.omit(oil_returns))
+N = nrow(oil_returns)
+initial_wealth = 100000
+sim1 = foreach(i=1:5000, .combine='rbind') %do% {
+  total_wealth = initial_wealth
+  weights = c(0.5, 0.25, 0.25)
+  holdings = weights * total_wealth
+  n_days = 20
+  wealthtracker = rep(0, n_days)
+  for(today in 1:n_days) {
+    return.today = resample(oil_returns, 1, orig.ids=FALSE)
+    holdings = holdings + holdings*return.today
+    total_wealth = sum(holdings)
+    wealthtracker[today] = total_wealth
+  }
+  wealthtracker
+}
+plot(wealthtracker, type='l',main = 'Oil ETF Funds for 20 Days',xlab = 'Days',ylab = 'Dollars')
+hist(sim1[,n_days]- initial_wealth, breaks=30)
+
+# 5% value at risk:
+oilVaR = quantile(sim1[,n_days]- initial_wealth, prob=0.05)
+oilVaR
+```
+
+
+```{r 19, message=FALSE}
+conservative = cbind(ClCl(GLDa),ClCl(BNDa),ClCl(HYGa),ClCl(VNQa),ClCl(SHYa))
+conservative = as.matrix(na.omit(conservative))
+N = nrow(conservative)
+initial_wealth = 100000
+sim1 = foreach(i=1:5000, .combine='rbind') %do% {
+  total_wealth = initial_wealth
+  weights = c(0.2, 0.2, 0.2, 0.2, 0.2)
+  holdings = weights * total_wealth
+  n_days = 20
+  wealthtracker = rep(0, n_days)
+  for(today in 1:n_days) {
+    return.today = resample(conservative, 1, orig.ids=FALSE)
+    holdings = holdings + holdings*return.today
+    total_wealth = sum(holdings)
+    wealthtracker[today] = total_wealth
+  }
+  wealthtracker
+}
+plot(wealthtracker, type='l',main = 'Conservative ETF Funds for 20 Days',xlab = 'Days',ylab = 'Dollars')
+hist(sim1[,n_days]- initial_wealth, breaks=30)
+
+# 5% value at risk:
+ConservativeVaR = quantile(sim1[,n_days]- initial_wealth, prob=0.05)
+ConservativeVaR
+```
+
+```{r 20, message=FALSE}
+balanced = cbind(ClCl(AOAa),ClCl(AOKa),ClCl(AOMa),ClCl(AORa),ClCl(SWANa))
+balanced = as.matrix(na.omit(balanced))
+N = nrow(balanced)
+initial_wealth = 100000
+sim1 = foreach(i=1:5000, .combine='rbind') %do% {
+  total_wealth = initial_wealth
+  weights = c(0.2, 0.2, 0.2, 0.2, 0.2)
+  holdings = weights * total_wealth
+  n_days = 20
+  wealthtracker = rep(0, n_days)
+  for(today in 1:n_days) {
+    return.today = resample(balanced, 1, orig.ids=FALSE)
+    holdings = holdings + holdings*return.today
+    total_wealth = sum(holdings)
+    wealthtracker[today] = total_wealth
+  }
+  wealthtracker
+}
+plot(wealthtracker, type='l',main = 'Balanced ETF Funds for 20 Days',xlab = 'Days',ylab = 'Dollars')
+hist(sim1[,n_days]- initial_wealth, breaks=30)
+
+# 5% value at risk:
+BalancedVaR = quantile(sim1[,n_days]- initial_wealth, prob=0.05)
+BalancedVaR
+```
+
+```{r 21, message=FALSE}
+oilVaR
+ConservativeVaR
+BalancedVaR
+```
++As we can see from the VaR's printed next to eachother, the best performing collection of ETFs is the conservative one filled with mostly bonds and relatively stable commodities like gold. The portfolio consisting only of oil/energy based ETFs performed very poorly. The balanced ETF was a little more aggressive than the conservative and therefore lost more money. All three of these are at a loss which may just show how the economy is heading during the coronavirus pandemic. 
+
+#Problem 4
+```{r 22, message=FALSE}
+library(RCurl)
+x <- getURL('https://raw.githubusercontent.com/jgscott/STA380/master/data/social_marketing.csv')
+social <- read.csv(text = x)
+rownames(social) <- social$X
+social$X <- NULL
+```
+
+```{r 23, message=FALSE}
+library(ggplot2)
+library(LICORS)  # for kmeans++
+library(foreach)
+library(mosaic)
+
+X = social[,-(1:9)]
+X = scale(X, center=TRUE, scale=TRUE)
+
+
+mu = attr(X,"scaled:center")
+sigma = attr(X,"scaled:scale")
+
+clust1 = kmeans(X, 5, nstart=50)
+
+```
+
+```{r 24, message=FALSE}
+clust2 = kmeanspp(X, k=5, nstart=50)
+
+clust2$center[1,]*sigma + mu
+clust2$center[2,]*sigma + mu
+clust2$center[5,]*sigma + mu
+```
++On this question I ran a kmeans++ model in order to find five different clusters of people in the audience. I inspected their centers and plotted the top qualities of each cluster against eachother (cluster 2 had no significant attributes).
+```{r 25, message=FALSE}
+qplot(college_uni, online_gaming, data=social, color=factor(clust2$cluster))
+```
++There is a large section of the products followers that has high scores for college tweets as well as gaming, meaning that the audience of the twitter account has a lot of young people following it. This could be because if the products appeal to young people, the overall demographics of twitter or both.
+```{r 26, message=FALSE}
+qplot(personal_fitness, health_nutrition, data=social, color=factor(clust2$cluster))
+```
++There is also a cluster that places high values on health, fitness and nutrition meaning that this product is most likely healthy and reaching the people that care about health.
+```{r 27, message=FALSE}
+qplot(parenting, family, data=social, color=factor(clust2$cluster))
+```
++Though not as strong of a correlation, there is still a good portion of followers who care about family and parenting.
+```{r 28}
+qplot(cooking, beauty, data=social, color=factor(clust2$cluster))
+```
++Another cluster seems to care most about cooking and beauty.
++My analysis is that this company should be targeting college kids, parents, people who like to cook, and people who care a lot about health and fitness.
+
+#Problem 5
+```{r 29, message=FALSE}
+library(tm) 
+library(tidyverse)
+library(slam)
+library(proxy)
+readerPlain = function(fname){
+  readPlain(elem=list(content=readLines(fname)), 
+            id=fname, language='en') }
+
+file_list = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/SimonCowell/*.txt')
+file_list1 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/AaronPressman/*.txt')
+file_list2 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/AlanCrosby/*.txt')
+file_list3 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/AlexanderSmith/*.txt')
+file_list4 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/BenjaminKangLim/*.txt')
+file_list5 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/BernardHickey/*.txt')
+file_list6 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/BradDorfman/*.txt')
+file_list7 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/DarrenSchuettler/*.txt')
+file_list8 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/DavidLawder/*.txt')
+file_list9 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/EdnaFernandes/*.txt')
+file_list10 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/EricAuchard/*.txt')
+file_list11 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/FumikoFujisaki/*.txt')
+file_list12 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/GrahamEarnshaw/*.txt')
+file_list13 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/HeatherScoffield/*.txt')
+file_list14 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/JanLopatka/*.txt')
+file_list15 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/JaneMacartney/*.txt')
+file_list16 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/JimGilchrist/*.txt')
+file_list17 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/JoWinterbottom/*.txt')
+file_list18 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/JoeOrtiz/*.txt')
+file_list19 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/JohnMastrini/*.txt')
+file_list20 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/JonathanBirt/*.txt')
+file_list21 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/KarlPenhaul/*.txt')
+file_list22 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/KeithWeir/*.txt')
+file_list23 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/KevinDrawbaugh/*.txt')
+file_list24 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/KevinMorrison/*.txt')
+file_list25 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/KirstinRidley/*.txt')
+file_list26 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/KouroshKarimkhany/*.txt')
+file_list27 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/LydiaZajc/*.txt')
+file_list28 = Sys.glob("/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/LynneO'Donnell/*.txt")
+file_list29 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/LynnleyBrowning/*.txt')
+file_list30 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/MarcelMichelson/*.txt')
+file_list31 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/MarkBendeich/*.txt')
+file_list32 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/MartinWolk/*.txt')
+file_list33 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/MatthewBunce/*.txt')
+file_list34 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/MichaelConnor/*.txt')
+file_list35 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/MureDickie/*.txt')
+file_list36 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/NickLouth/*.txt')
+file_list37 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/PatriciaCommins/*.txt')
+file_list38 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/PeterHumphrey/*.txt')
+file_list39 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/PierreTran/*.txt')
+file_list40 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/RobinSidel/*.txt')
+file_list41 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/RogerFillion/*.txt')
+file_list42 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/SamuelPerry/*.txt')
+file_list43 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/SarahDavison/*.txt')
+file_list44 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/ScottHillis/*.txt')
+file_list45 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/TanEeLyn/*.txt')
+file_list46 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/TheresePoletti/*.txt')
+file_list47 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/TimFarrand/*.txt')
+file_list48 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/ToddNissen/*.txt')
+file_list49 = Sys.glob('/Users/zachhall/Rstudio/STA380/data/ReutersC50/C50train/WilliamKazer/*.txt')
+files = c(file_list, file_list1,file_list10,file_list11,file_list12,file_list13,file_list14,file_list15, file_list16, file_list17, file_list18, file_list19, file_list2, file_list20, file_list21, file_list22, file_list23, file_list24, file_list25, file_list26, file_list27, file_list28, file_list29, file_list3, file_list30, file_list31, file_list32, file_list33, file_list34, file_list35, file_list36, file_list37, file_list38, file_list39, file_list4, file_list40, file_list41, file_list42, file_list43, file_list44, file_list45, file_list46, file_list47, file_list48, file_list49, file_list5, file_list6, file_list7, file_list8, file_list9)
+readfiles = lapply(files, readerPlain)
+```
++Here I read in all of the files manually as I couldn't find a for loop that worked, merged them all together and read them in.
+```{r 30, message=FALSE}
+mynames = files %>%
+	{ strsplit(., '/', fixed=TRUE) } %>%
+	{ lapply(., tail, n=2) } %>%
+	{ lapply(., paste0, collapse = '') } %>%
+	unlist
+names(readfiles) = mynames
+documents_raw = Corpus(VectorSource(readfiles))
+my_documents = documents_raw %>%
+  tm_map(content_transformer(tolower))  %>%             # make everything lowercase
+  tm_map(content_transformer(removeNumbers)) %>%        # remove numbers
+  tm_map(content_transformer(removePunctuation)) %>%    # remove punctuation
+  tm_map(content_transformer(stripWhitespace))          # remove excess white-space
+```
++Altered the documents here for easier processing
+```{r 31, message=FALSE}
+my_documents = tm_map(my_documents, content_transformer(removeWords), stopwords("en"))
+DTM_quotes = DocumentTermMatrix(my_documents)
+DTM_quotes
+inspect(DTM_quotes[1:10,1:20])
+findFreqTerms(DTM_quotes, 2000)
+```
++This is my matrix of numbers as well as terms that are used 2000 times.
+```{r 32, message=FALSE}
+DTM_quotes = removeSparseTerms(DTM_quotes, 0.95)
+DTM_quotes
+tfidf_quotes = weightTfIdf(DTM_quotes)
+cosine_dist_mat = proxy::dist(as.matrix(tfidf_quotes), method='cosine')
+tree_quotes = hclust(cosine_dist_mat)
+clust5 = cutree(tree_quotes, k=5)
+#Doing PCA
+X = as.matrix(tfidf_quotes)
+summary(colSums(X))
+scrub_cols = which(colSums(X) == 0)
+X = X[,-scrub_cols]
+pca_quotes = prcomp(X, scale=TRUE)
+summary(pca_quotes)
+plot(pca_quotes$x[,1:2], xlab="PCA 1 direction", ylab="PCA 2 direction", bty="n",
+     type='n')
+text(pca_quotes$x[,1:2], labels = 1:length(readfiles), cex=0.7)
+```
++In this graph a lot of these are grouped together in the middle due to the size of our dataset, however we can inspect some pairs of outliers.
+```{r 33}
+content(readfiles[[40]])
+content(readfiles[[28]])
+```
++These two are similar which makes sense because they seem to be focused on financial issues. You can do a tree or knn in order to find the author attribution of these quotes and then find the accuracy based on that.
+
+
+#Problem 6
+
+```{r 40, message=FALSE}
+library(tidyverse)
+library(arules) # has a big ecosystem of packages built around it
+library(arulesViz)
+
+
+library(RCurl)
+x <- getURL('https://raw.githubusercontent.com/jgscott/STA380/master/data/groceries.txt')
+y <- read.table(text=x, header = FALSE, sep = ",", fill = TRUE)
+library(data.table)
+setDT(y, keep.rownames = TRUE)[]
+y.list <- split(y, seq(nrow(y)))
+y$rn = factor(y$rn)
+playtrans = as(y, "transactions")
+summary(playtrans)
+```
++Here is a summary of the different values that are counted the most among the grocery lists, as well as some empty values of shorter lists. You can get rid of these empties by using a nonzero lift.
+```{r 41, message=FALSE}
+groceryrules = apriori(playtrans, 
+	parameter=list(support=.005, confidence=.1, maxlen=5))
+inspect(subset(groceryrules, subset=lift > 5))
+sub0 = subset(groceryrules, subset=lift > 0.01)
+plot(sub0, xlim = c(0,.03))
+```
++Here we get a plot of all of the rules in support confidence space, as well as the subset of values with a lift value greater than 5. We see that things like yogurt and milk, frankfurters and sauasages, and fruits and vegetables have high lift values due to their likeness.
+```{r 42, message=FALSE}
+sub1 = subset(groceryrules, subset=confidence > 0.2 & lift > 0.01)
+summary(sub1)
+plot(head(sub1, 100, by='lift'), method='graph')
+options(warn = defaultW)
+```
++This connection graph shows an exterior of produce and foods and then the middle is things such as drinks and hygiene materials. This may show that when shoppers get groceries that they are going for one or the other more often than both at the same time.
+
